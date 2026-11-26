@@ -1,42 +1,52 @@
 import socket
 import threading
+from datetime import datetime
 
-# 1. Configurações de conexão com o servidor
+# Cores ANSI para o terminal
+AZUL = "\033[94m"
+VERDE = "\033[92m"
+AMARELO = "\033[93m"
+VERMELHO = "\033[91m"
+CINZA = "\033[90m"
+RESET = "\033[0m"
+
 endereco = '127.0.0.1'
 porta = 5555
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-# 2. Informa o nome do usuário antes de conectar
-meu_nome = input("Informe seu nome: ")
+print(f"{CINZA}==============================================={RESET}")
+meu_nome = input(f"{AMARELO}Informe seu nome no chat: {RESET}").strip() or "Cliente"
 
 client.connect((endereco, porta))
-# Envia o nome como a primeira mensagem de apresentação
 client.sendall(meu_nome.encode('utf-8'))
-print(f"Conectado ao servidor! Pode começar a conversar.")
+
+print(f"{VERDE}✓ Conectado ao servidor!{RESET}")
+print(f"{CINZA}Dica: digite suas mensagens e pressione Enter para enviar.{RESET}")
+print(f"{CINZA}==============================================={RESET}\n")
 
 def receber_mensagens():
-    """Thread que fica apenas escutando tudo que chega da rede."""
+    """Thread que fica escutando as mensagens que chegam da rede."""
     while True:
         try:
             mensagem = client.recv(1024).decode('utf-8')
             if not mensagem:
-                print("\nConexão com o servidor foi encerrada.")
+                print(f"\n{VERMELHO}● [Conexão com o servidor foi encerrada]{RESET}")
                 break
-            print(mensagem)
+            print(f"{mensagem}")
         except:
             break
 
-# Inicia a escuta em segundo plano (em paralelo)
 threading.Thread(target=receber_mensagens, daemon=True).start()
 
-# O loop principal fica livre para você digitar mensagens
 try:
     while True:
-        mensagem = input()
+        mensagem = input().strip()
         if mensagem:
+            hora = datetime.now().strftime("%H:%M")
+            print(f"{CINZA}[{hora}]{RESET} {VERDE}Você:{RESET} {mensagem}")
             client.sendall(mensagem.encode('utf-8'))
 except KeyboardInterrupt:
-    print("\nVocê saiu do chat.")
+    print(f"\n\n{VERMELHO}● [Você saiu do chat]{RESET}")
 finally:
     client.close()

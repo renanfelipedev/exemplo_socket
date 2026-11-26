@@ -1,7 +1,15 @@
 import socket
 import threading
+from datetime import datetime
 
-# 1. Configurações básicas de rede
+# Cores ANSI para o terminal
+AZUL = "\033[94m"
+VERDE = "\033[92m"
+AMARELO = "\033[93m"
+VERMELHO = "\033[91m"
+CINZA = "\033[90m"
+RESET = "\033[0m"
+
 endereco = '0.0.0.0'
 porta = 5555
 
@@ -10,69 +18,78 @@ server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind((endereco, porta))
 server.listen()
 
-# Lista para guardar os sockets de todos os clientes conectados
 clientes = []
 
-# Nome do servidor para identificação no chat
-nome_servidor = input("Informe o nome do servidor: ")
+print(f"{CINZA}==============================================={RESET}")
+nome_servidor = input(f"{AMARELO}Informe o nome do servidor no chat: {RESET}").strip() or "Servidor"
+print(f"{CINZA}==============================================={RESET}")
+print(f"{VERDE}✓ Servidor aguardando conexões na porta {porta}...{RESET}\n")
 
 def transmitir(mensagem, remetente=None):
-    """Envia uma mensagem para todos os clientes conectados."""
-    for cliente in clientes:
+    """Envia a mensagem para todos os clientes conectados."""
+    for cliente in list(clientes):
         if cliente != remetente:
             try:
                 cliente.sendall(mensagem.encode('utf-8'))
             except:
-                clientes.remove(cliente)
+                if cliente in clientes:
+                    clientes.remove(cliente)
 
 def atender_cliente(conexao):
-    """Função executada por uma Thread exclusiva para cada cliente."""
-    # A primeira mensagem recebida é o nome do cliente
-    nome_cliente = conexao.recv(1024).decode('utf-8')
-    clientes.append(conexao)
+    """Thread exclusiva para cada cliente conectado."""
+    nome_cliente = "Anônimo"
+    try:
+        nome_cliente = conexao.recv(1024).decode('utf-8').strip() or "Anônimo"
+        clientes.append(conexao)
 
-    print(f"[{nome_cliente}] entrou no chat.")
-    transmitir(f"[{nome_cliente}] entrou no chat.", remetente=conexao)
+        hora = datetime.now().strftime("%H:%M")
+        aviso_entrou = f"{CINZA}[{hora}]{RESET} {VERDE}● [{nome_cliente}] entrou no chat.{RESET}"
+        print(aviso_entrou)
+        transmitir(aviso_entrou, remetente=conexao)
 
-    while True:
-        try:
+        while True:
             mensagem = conexao.recv(1024).decode('utf-8')
             if not mensagem:
                 break
             
-            # Exibe no servidor e repassa aos outros clientes
-            msg_formatada = f"{nome_cliente}: {mensagem}"
+            hora = datetime.now().strftime("%H:%M")
+            msg_formatada = f"{CINZA}[{hora}]{RESET} {AZUL}{nome_cliente}:{RESET} {mensagem}"
             print(msg_formatada)
             transmitir(msg_formatada, remetente=conexao)
-        except:
-            break
 
-    # Quando o cliente sai ou perde conexão
-    clientes.remove(conexao)
-    conexao.close()
-    print(f"[{nome_cliente}] saiu do chat.")
-    transmitir(f"[{nome_cliente}] saiu do chat.")
+    except:
+        pass
+    finally:
+        if conexao in clientes:
+            clientes.remove(conexao)
+        conexao.close()
+        hora = datetime.now().strftime("%H:%M")
+        aviso_saiu = f"{CINZA}[{hora}]{RESET} {VERMELHO}● [{nome_cliente}] saiu do chat.{RESET}"
+        print(aviso_saiu)
+        transmitir(aviso_saiu)
 
 def enviar_servidor():
-    """Permite ao próprio servidor também digitar mensagens no chat."""
+    """Permite ao operador do servidor digitar mensagens no chat."""
     while True:
-        texto = input()
-        if texto:
-            msg = f"{nome_servidor}: {texto}"
-            transmitir(msg)
+        try:
+            texto = input().strip()
+            if texto:
+                hora = datetime.now().strftime("%H:%M")
+                # Exibe imediatamente no terminal do próprio servidor
+                print(f"{CINZA}[{hora}]{RESET} {VERDE}Você:{RESET} {texto}")
+                # Envia aos clientes com o nome do servidor
+                msg_formatada = f"{CINZA}[{hora}]{RESET} {AMARELO}{nome_servidor}:{RESET} {texto}"
+                transmitir(msg_formatada)
+        except (KeyboardInterrupt, EOFError):
+            break
 
-# Inicia uma thread para o servidor poder digitar sem travar o accept()
 threading.Thread(target=enviar_servidor, daemon=True).start()
 
-print(f"Servidor aguardando conexões na porta {porta}...")
-
-# Loop principal: apenas aguarda novas conexões
 try:
     while True:
         conexao, endereco_cliente = server.accept()
-        # Cria um atendente (Thread) para o novo cliente
         threading.Thread(target=atender_cliente, args=(conexao,), daemon=True).start()
 except KeyboardInterrupt:
-    print("\nServidor finalizado.")
+    print(f"\n{VERMELHO}● Servidor finalizado.{RESET}")
 finally:
     server.close()
