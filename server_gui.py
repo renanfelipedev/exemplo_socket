@@ -1,9 +1,15 @@
 import re
 import socket
 import threading
+import time
 import tkinter as tk
 from datetime import datetime
 from tkinter import scrolledtext, messagebox
+
+# Configurações Anti-Spam
+LIMITE_MSGS = 5       # Máximo de mensagens permitidas
+JANELA_SEGUNDOS = 5   # Intervalo de tempo (em segundos)
+TEMPO_TIMEOUT = 10    # Duração do silenciamento (em segundos)
 
 ANSI_REGEX = re.compile(r'\x1b\[[0-9;]*m')
 
@@ -40,10 +46,35 @@ def atender_cliente(conexao):
         janela.after(0, adicionar_mensagem, aviso_entrou, "sistema")
         transmitir(aviso_entrou, remetente=conexao)
 
+        ultimas_msgs = []
+        silenciado_ate = 0
+
         while rodando:
             mensagem = conexao.recv(1024).decode('utf-8')
             if not mensagem:
                 break
+
+            agora = time.time()
+
+            # Verifica se o cliente está em timeout
+            if agora < silenciado_ate:
+                restante = int(silenciado_ate - agora) + 1
+                conexao.sendall(f"⚠ Você está em timeout por spam! Aguarde {restante}s.".encode('utf-8'))
+                continue
+
+            # Registra o horário da mensagem e filtra a janela de tempo
+            ultimas_msgs.append(agora)
+            ultimas_msgs = [t for t in ultimas_msgs if agora - t <= JANELA_SEGUNDOS]
+
+            # Se ultrapassar o limite, aplica o timeout
+            if len(ultimas_msgs) > LIMITE_MSGS:
+                silenciado_ate = agora + TEMPO_TIMEOUT
+                ultimas_msgs.clear()
+                hora = datetime.now().strftime("%H:%M")
+                aviso_spam = f"[{hora}] ⚠ [{nome_cliente}] recebeu timeout de {TEMPO_TIMEOUT}s por spam!"
+                janela.after(0, adicionar_mensagem, aviso_spam, "sistema")
+                transmitir(aviso_spam)
+                continue
 
             texto_limpo = ANSI_REGEX.sub('', mensagem).strip()
             hora = datetime.now().strftime("%H:%M")

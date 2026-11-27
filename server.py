@@ -1,6 +1,12 @@
 import socket
 import threading
+import time
 from datetime import datetime
+
+# Configurações Anti-Spam
+LIMITE_MSGS = 5       # Máximo de mensagens permitidas
+JANELA_SEGUNDOS = 5   # Intervalo de tempo (em segundos)
+TEMPO_TIMEOUT = 10    # Duração do silenciamento (em segundos)
 
 # Cores ANSI para o terminal
 AZUL = "\033[94m"
@@ -47,10 +53,35 @@ def atender_cliente(conexao):
         print(aviso_entrou)
         transmitir(aviso_entrou, remetente=conexao)
 
+        ultimas_msgs = []
+        silenciado_ate = 0
+
         while True:
             mensagem = conexao.recv(1024).decode('utf-8')
             if not mensagem:
                 break
+
+            agora = time.time()
+
+            # Verifica se o cliente está cumprindo timeout
+            if agora < silenciado_ate:
+                restante = int(silenciado_ate - agora) + 1
+                conexao.sendall(f"{VERMELHO}⚠ Você está em timeout por spam! Aguarde {restante}s.{RESET}".encode('utf-8'))
+                continue
+
+            # Registra o horário e mantém apenas mensagens dentro da janela de tempo
+            ultimas_msgs.append(agora)
+            ultimas_msgs = [t for t in ultimas_msgs if agora - t <= JANELA_SEGUNDOS]
+
+            # Se ultrapassar o limite, aplica timeout
+            if len(ultimas_msgs) > LIMITE_MSGS:
+                silenciado_ate = agora + TEMPO_TIMEOUT
+                ultimas_msgs.clear()
+                hora = datetime.now().strftime("%H:%M")
+                aviso_spam = f"{CINZA}[{hora}]{RESET} {VERMELHO}⚠ [{nome_cliente}] recebeu timeout de {TEMPO_TIMEOUT}s por spam!{RESET}"
+                print(aviso_spam)
+                transmitir(aviso_spam)
+                continue
             
             hora = datetime.now().strftime("%H:%M")
             msg_formatada = f"{CINZA}[{hora}]{RESET} {AZUL}{nome_cliente}:{RESET} {mensagem}"
